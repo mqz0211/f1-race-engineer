@@ -303,7 +303,7 @@ export default function App() {
           <div className="section-heading"><span>04 / STRATEGY</span><span className="muted">PIT WALL</span></div>
           <div className="panel tyre-panel">
             <div className="panel-title">TYRE MANAGEMENT <span>SET 02</span></div>
-            <div className="tyre-graphic"><div className="tyre-ring"><div className="tyre-inner"><strong>{race.tyreWear}<small>%</small></strong><span>EST. WEAR</span></div></div></div>
+            <div className="tyre-graphic"><div className="tyre-ring" style={{ background: `conic-gradient(var(--accent) 0 ${race.tyreWear}%, #34403b ${race.tyreWear}% 100%)` }}><div className="tyre-inner"><strong>{race.tyreWear}<small>%</small></strong><span>EST. WEAR</span></div></div></div>
             <div className="tyre-details"><div><span>COMPOUND</span><strong className={`compound ${race.tyreCompound.toLowerCase()}`}>{race.tyreCompound}</strong></div><div><span>CONDITION</span><strong className={`condition-${tyreStatus}`}>{tyreStatus.toUpperCase()}</strong></div></div>
             <div className="wear-track"><span className={`wear-fill ${tyreStatus}`} style={{ width: `${race.tyreWear}%` }} /></div>
             <p className="micro-copy">Estimated degradation model · simulated data</p>
