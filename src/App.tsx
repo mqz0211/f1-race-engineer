@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import {
-  advanceLap,
-  generateEngineerReply,
+  advanceRaceState,
+  generateDriverReply,
   initialRaceState,
   makeMessage,
   type RadioMessage,
@@ -29,51 +29,52 @@ declare global {
 }
 
 const initialMessages: RadioMessage[] = [
-  makeMessage('engineer', 'Radio check. Loud and clear. We are on lap 18, P7. Tyres are holding up well. Let me know what you need.'),
+  makeMessage('engineer', 'Push, maintain position.'),
+  makeMessage('driver', "Copy. I'll push. Rear tyres are feeling okay, but the front is still sliding through Maggotts."),
 ]
 
-function TrackMap() {
-  return (
-    <svg className="track-map" viewBox="0 0 520 290" role="img" aria-label="Illustrative circuit map">
-      <path className="track-shadow" d="M84 168 C56 145 67 89 116 72 L178 52 C211 42 237 49 250 75 L278 120 C293 145 316 151 346 136 L385 115 C413 100 450 111 455 141 L460 179 C465 210 439 232 407 225 L341 211 C305 200 282 211 262 238 C238 267 197 253 183 222 L163 184 C150 160 119 182 84 168Z" />
-      <path className="track-line" d="M84 168 C56 145 67 89 116 72 L178 52 C211 42 237 49 250 75 L278 120 C293 145 316 151 346 136 L385 115 C413 100 450 111 455 141 L460 179 C465 210 439 232 407 225 L341 211 C305 200 282 211 262 238 C238 267 197 253 183 222 L163 184 C150 160 119 182 84 168Z" />
-      <path className="track-centre" d="M84 168 C56 145 67 89 116 72 L178 52 C211 42 237 49 250 75 L278 120 C293 145 316 151 346 136 L385 115 C413 100 450 111 455 141 L460 179 C465 210 439 232 407 225 L341 211 C305 200 282 211 262 238 C238 267 197 253 183 222 L163 184 C150 160 119 182 84 168Z" />
-      <path className="track-sector" d="M84 168 C56 145 67 89 116 72 L178 52" />
-      <circle className="track-dot" cx="84" cy="168" r="7" />
-      <text x="68" y="194">START / FINISH</text>
-      <text x="365" y="92">SECTOR 2</text>
-      <text x="190" y="273">SECTOR 3</text>
-      <circle className="track-car" cx="278" cy="120" r="5" />
-    </svg>
-  )
-}
-
-function Stat({ label, value, unit, accent = false }: { label: string; value: string; unit?: string; accent?: boolean }) {
-  return (
-    <div className="stat">
-      <span className="stat-label">{label}</span>
-      <div className={`stat-value ${accent ? 'accent' : ''}`}>{value}<small>{unit}</small></div>
-    </div>
-  )
-}
+const radioOptions = [
+  {
+    title: 'Tell him to manage his tyres.',
+    detail: 'Ask the driver to protect the front tyres and preserve grip.',
+    message: 'Manage the tyres. Avoid pushing too hard through the high-speed corners.',
+  },
+  {
+    title: 'Bring him into the pits.',
+    detail: 'Call the driver into pit lane for a fresh set of tyres.',
+    message: 'Box this lap. We are bringing you in for a new set of tyres.',
+  },
+  {
+    title: 'Tell him to keep pushing.',
+    detail: 'Ask for more pace to close the gap to the car ahead.',
+    message: 'Keep pushing. We need to catch P7.',
+  },
+  {
+    title: 'Ask for more information.',
+    detail: 'Get a clearer report before making a strategy decision.',
+    message: 'Can you give me more information about the front sliding?',
+  },
+]
 
 export default function App() {
   const [race, setRace] = useState<RaceState>(initialRaceState)
   const [messages, setMessages] = useState<RadioMessage[]>(initialMessages)
   const [draft, setDraft] = useState('')
+  const [busy, setBusy] = useState(false)
   const [listening, setListening] = useState(false)
   const [voiceEnabled, setVoiceEnabled] = useState(true)
   const [radioEnabled, setRadioEnabled] = useState(true)
-  const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState('')
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null)
   const feedRef = useRef<HTMLDivElement>(null)
-  const recognitionSupported = typeof window !== 'undefined' && Boolean(window.SpeechRecognition || window.webkitSpeechRecognition)
-  const apiUrl = import.meta.env.VITE_ENGINEER_API_URL as string | undefined
+
+  const Recognition = typeof window !== 'undefined'
+    ? window.SpeechRecognition || window.webkitSpeechRecognition
+    : undefined
 
   useEffect(() => {
     feedRef.current?.scrollTo({ top: feedRef.current.scrollHeight, behavior: 'smooth' })
-  }, [messages])
+  }, [messages, busy])
 
   useEffect(() => () => {
     recognitionRef.current?.stop()
@@ -91,7 +92,7 @@ export default function App() {
       oscillator.type = 'square'
       oscillator.frequency.setValueAtTime(920, context.currentTime)
       oscillator.frequency.exponentialRampToValueAtTime(520, context.currentTime + 0.055)
-      gain.gain.setValueAtTime(0.035, context.currentTime)
+      gain.gain.setValueAtTime(0.025, context.currentTime)
       gain.gain.exponentialRampToValueAtTime(0.001, context.currentTime + 0.075)
       oscillator.connect(gain)
       gain.connect(context.destination)
@@ -99,7 +100,7 @@ export default function App() {
       oscillator.stop(context.currentTime + 0.08)
       oscillator.onended = () => void context.close()
     } catch {
-      // Audio is an enhancement; the radio remains usable without it.
+      // The radio remains usable when audio effects are unavailable.
     }
   }
 
@@ -108,72 +109,57 @@ export default function App() {
     window.speechSynthesis.cancel()
     const utterance = new SpeechSynthesisUtterance(text)
     utterance.lang = 'en-GB'
-    utterance.rate = 0.96
-    utterance.pitch = 0.94
+    utterance.rate = 0.94
+    utterance.pitch = 0.92
     const voices = window.speechSynthesis.getVoices()
     const britishVoice = voices.find((voice) => voice.lang.toLowerCase() === 'en-gb')
-      || voices.find((voice) => voice.lang.toLowerCase().startsWith('en-gb'))
     if (britishVoice) utterance.voice = britishVoice
     window.speechSynthesis.speak(utterance)
   }
 
-  async function sendMessage(text: string) {
-    const trimmed = text.trim()
-    if (!trimmed || busy) return
+  async function sendRadioCall(value: string) {
+    const text = value.trim()
+    if (!text || busy) return
+
     setBusy(true)
     setDraft('')
-    const driverMessage = makeMessage('driver', trimmed)
-    setMessages((current) => [...current, driverMessage])
+    setNotice('')
+    setMessages((current) => [...current, makeMessage('engineer', text)])
     playRadioClick()
 
-    let reply = ''
-    try {
-      if (apiUrl) {
-        const response = await fetch(apiUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: trimmed, raceState: race }),
-        })
-        if (!response.ok) throw new Error(`Engineer endpoint returned ${response.status}`)
-        const payload = await response.json() as { reply?: string }
-        if (!payload.reply) throw new Error('The engineer endpoint did not return a reply.')
-        reply = payload.reply
-      } else {
-        await new Promise((resolve) => window.setTimeout(resolve, 420))
-        reply = generateEngineerReply(trimmed, race)
-      }
-    } catch (error) {
-      reply = 'I have lost the strategy data link. The local radio fallback is available: ' + generateEngineerReply(trimmed, race)
-      setNotice(error instanceof Error ? error.message : 'AI endpoint unavailable')
-    }
+    await new Promise((resolve) => window.setTimeout(resolve, 520))
 
-    const engineerMessage = makeMessage('engineer', reply)
-    setMessages((current) => [...current, engineerMessage])
+    const nextRace = advanceRaceState(text, race)
+    const reply = generateDriverReply(text, nextRace)
+    setRace(nextRace)
+    setMessages((current) => [...current, makeMessage('driver', reply)])
     playRadioClick()
     speak(reply)
     setBusy(false)
+
+    if (nextRace.lap >= nextRace.totalLaps) {
+      setNotice('Chequered flag. The simulated race has reached the final lap.')
+    }
   }
 
   function startListening() {
-    if (!recognitionSupported || listening || busy) return
-    const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition
-    if (!Recognition) return
+    if (!Recognition || listening || busy) return
     const recognition = new Recognition()
     recognition.lang = 'en-GB'
     recognition.interimResults = false
     recognition.maxAlternatives = 1
     recognition.onresult = (event) => {
       const transcript = event.results[0]?.[0]?.transcript
-      if (transcript) void sendMessage(transcript)
+      if (transcript) void sendRadioCall(transcript)
     }
     recognition.onerror = () => {
       setListening(false)
-      setNotice('Microphone recognition stopped. Check browser microphone permission or use the text radio.')
+      setNotice('Microphone unavailable. Check browser permission or use the text radio.')
     }
     recognition.onend = () => setListening(false)
     recognitionRef.current = recognition
     setListening(true)
-    setNotice('Listening — release the radio button to send.')
+    setNotice('Listening — speak your instruction, then release the radio.')
     try {
       recognition.start()
     } catch {
@@ -187,27 +173,16 @@ export default function App() {
     setListening(false)
   }
 
-  function updateRace(next: (state: RaceState) => RaceState) {
-    setRace((current) => next(current))
-  }
-
-  function toggleWeather() {
-    updateRace((current) => ({ ...current, weather: current.weather === 'DRY' ? 'LIGHT RAIN' : current.weather === 'LIGHT RAIN' ? 'WET' : 'DRY' }))
-  }
-
-  function toggleSafetyCar() {
-    updateRace((current) => ({ ...current, safetyCar: !current.safetyCar }))
-  }
-
   function resetSession() {
     setRace(initialRaceState)
     setMessages(initialMessages)
-    setNotice('Session reset to the opening race scenario.')
+    setDraft('')
+    setNotice('Session reset to lap 12.')
     window.speechSynthesis?.cancel()
   }
 
-  const progress = (race.lap / race.totalLaps) * 100
-  const tyreStatus = race.tyreWear >= 72 ? 'critical' : race.tyreWear >= 55 ? 'warning' : 'good'
+  const frontCondition = race.frontCondition.toLowerCase()
+  const pitWindow = race.pitWindow === 'OPEN' ? 'Open' : 'Not yet'
 
   return (
     <main className="app-shell">
@@ -218,127 +193,160 @@ export default function App() {
         </a>
         <div className="session-meta">
           <span className="live-dot" />
-          <span>SIMULATION LIVE</span>
+          <span>LIVE SIMULATION</span>
           <i />
-          <span>GRAND PRIX</span>
+          <span>{race.track.toUpperCase()} GRAND PRIX</span>
           <i />
-          <span>{race.track.toUpperCase()}</span>
+          <span>LAP {race.lap} / {race.totalLaps}</span>
         </div>
         <div className="top-actions">
-          <button className={`icon-button ${voiceEnabled ? 'selected' : ''}`} onClick={() => setVoiceEnabled((value) => !value)} title="Toggle engineer voice" aria-label="Toggle engineer voice">
-            <span className="sound-icon">♫</span>
-          </button>
-          <button className={`icon-button ${radioEnabled ? 'selected' : ''}`} onClick={() => setRadioEnabled((value) => !value)} title="Toggle radio effects" aria-label="Toggle radio effects">◖</button>
-          <button className="reset-button" onClick={resetSession}>RESET SESSION</button>
+          <button className={`icon-button ${voiceEnabled ? 'selected' : ''}`} onClick={() => setVoiceEnabled((value) => !value)} aria-label="Toggle driver voice" title="Toggle driver voice">♫</button>
+          <button className={`icon-button ${radioEnabled ? 'selected' : ''}`} onClick={() => setRadioEnabled((value) => !value)} aria-label="Toggle radio effects" title="Toggle radio effects">◖</button>
+          <button className="reset-button" onClick={resetSession}>RESET</button>
         </div>
       </header>
 
-      <section className="race-heading">
+      <section className="intro">
         <div>
-          <p className="eyebrow">RACE CONTROL <span>/</span> DRIVER COMMUNICATIONS</p>
-          <h1>Race engineer<span>.</span></h1>
-          <p className="subheading">Your pit wall. Your call. Every lap counts.</p>
+          <p className="eyebrow">PIT WALL <span>/</span> DRIVER COMMUNICATIONS</p>
+          <h1>You are the race engineer<span>.</span></h1>
+          <p className="subheading">Your driver is on track. You make the calls.</p>
         </div>
-        <div className="lap-widget">
-          <div className="lap-number"><strong>{String(race.lap).padStart(2, '0')}</strong><span>/ {race.totalLaps}</span></div>
-          <div className="lap-track"><span style={{ width: `${progress}%` }} /></div>
-          <small>RACE PROGRESS</small>
+        <div className="session-chip">
+          <span className="session-chip-label">CURRENT POSITION</span>
+          <strong>P{race.position}</strong>
+          <small>{race.driver} · {race.team}</small>
         </div>
       </section>
 
-      <section className="dashboard">
-        <aside className="column telemetry-column">
-          <div className="section-heading"><span>01 / CAR TELEMETRY</span><span className="muted">LIVE SIM</span></div>
-          <div className="panel position-panel">
-            <div className="position-top"><span>RUNNING POSITION</span><span className="position-change">—</span></div>
-            <div className="position-number">P{race.position}<small> / 20</small></div>
-            <div className="position-foot"><span>{race.driver}</span><span>{race.team}</span></div>
-          </div>
-          <div className="panel telemetry-panel">
-            <div className="panel-title">INTERVALS <span>GAP / SEC</span></div>
-            <Stat label="CAR AHEAD" value={race.gapAhead.toFixed(1)} unit="s" accent />
-            <div className="hairline" />
-            <Stat label="CAR BEHIND" value={race.gapBehind.toFixed(1)} unit="s" />
-            <div className="hairline" />
-            <Stat label="FUEL PREDICTION" value={`${race.fuelDelta >= 0 ? '+' : ''}${race.fuelDelta.toFixed(1)}`} unit="laps" accent={race.fuelDelta < 0} />
-          </div>
-          <div className="panel conditions-panel">
-            <div className="panel-title">TRACK CONDITIONS <span>ENVIRONMENT</span></div>
-            <div className="condition-row"><span>TRACK TEMP.</span><strong>{race.trackTemp}°C</strong></div>
-            <div className="condition-row"><span>AIR TEMP.</span><strong>{race.airTemp}°C</strong></div>
-            <div className="condition-row"><span>WEATHER</span><strong className={race.weather === 'DRY' ? '' : 'weather-alert'}>{race.weather}</strong></div>
-            <div className="condition-row"><span>SAFETY CAR</span><strong className={race.safetyCar ? 'weather-alert' : ''}>{race.safetyCar ? 'DEPLOYED' : 'NONE'}</strong></div>
-          </div>
-        </aside>
-
-        <section className="column centre-column">
-          <div className="section-heading"><span>02 / CIRCUIT OVERVIEW</span><span className="muted">SCHEMATIC</span></div>
-          <div className="panel circuit-panel">
-            <div className="circuit-head"><div><span className="eyebrow">ROUND 01</span><h2>{race.track}<span>.</span></h2></div><div className="circuit-tag">GBR <b>◆</b></div></div>
-            <TrackMap />
-            <div className="circuit-footer"><span><i className="legend-dot car" /> CAR POSITION</span><span>5.891 KM <b>·</b> 18 CORNERS</span></div>
-          </div>
-
-          <div className="section-heading radio-heading"><span>03 / TEAM RADIO</span><span className="muted">{messages.length.toString().padStart(2, '0')} TRANSMISSIONS</span></div>
-          <div className="panel radio-panel">
-            <div className="radio-top"><div><span className="radio-indicator" /> <strong>ENGINEER CHANNEL</strong></div><span className="mono">CH 07.4</span></div>
-            <div className="radio-feed" ref={feedRef}>
-              {messages.map((message) => (
-                <article className={`message ${message.from}`} key={message.id}>
-                  <div className="message-meta"><strong>{message.from === 'driver' ? 'DRIVER' : 'RACE ENGINEER'}</strong><time>{message.time}</time></div>
-                  <p>{message.text}</p>
-                </article>
-              ))}
-              {busy && <div className="thinking"><span /><span /><span /> ENGINEER IS RESPONDING</div>}
-            </div>
-            {notice && <div className="notice-line">{notice}</div>}
-            <form className="radio-input" onSubmit={(event) => { event.preventDefault(); void sendMessage(draft) }}>
-              <input value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="Talk to your engineer…" aria-label="Message your race engineer" />
-              <button type="submit" disabled={!draft.trim() || busy} className="send-button">SEND <span>↗</span></button>
-            </form>
-          </div>
-        </section>
-
-        <aside className="column strategy-column">
-          <div className="section-heading"><span>04 / STRATEGY</span><span className="muted">PIT WALL</span></div>
-          <div className="panel tyre-panel">
-            <div className="panel-title">TYRE MANAGEMENT <span>SET 02</span></div>
-            <div className="tyre-graphic"><div className="tyre-ring" style={{ background: `conic-gradient(var(--accent) 0 ${race.tyreWear}%, #34403b ${race.tyreWear}% 100%)` }}><div className="tyre-inner"><strong>{race.tyreWear}<small>%</small></strong><span>EST. WEAR</span></div></div></div>
-            <div className="tyre-details"><div><span>COMPOUND</span><strong className={`compound ${race.tyreCompound.toLowerCase()}`}>{race.tyreCompound}</strong></div><div><span>CONDITION</span><strong className={`condition-${tyreStatus}`}>{tyreStatus.toUpperCase()}</strong></div></div>
-            <div className="wear-track"><span className={`wear-fill ${tyreStatus}`} style={{ width: `${race.tyreWear}%` }} /></div>
-            <p className="micro-copy">Estimated degradation model · simulated data</p>
-          </div>
-          <div className="panel strategy-call">
-            <div className="panel-title">STRATEGY CALL <span>LIVE</span></div>
-            <div className="call-status"><span className={race.tyreWear > 72 ? 'status-amber' : 'status-green'} />{race.tyreWear > 72 ? 'PIT WINDOW OPEN' : 'HOLD POSITION'}</div>
-            <p>{race.tyreWear > 72 ? 'Tyre degradation is approaching the limit. Prepare for a stop.' : 'Maintain current pace. Protect the rear tyres and monitor the gap.'}</p>
-            <button className="outline-button" onClick={() => void sendMessage('What is the current pit strategy?')}>ASK ENGINEER <span>↗</span></button>
-          </div>
-          <div className="panel sim-controls">
-            <div className="panel-title">RACE DIRECTOR <span>CONTROLS</span></div>
-            <button onClick={() => updateRace(advanceLap)} className="control-button"><span>ADVANCE ONE LAP</span><b>＋</b></button>
-            <button onClick={toggleWeather} className="control-button"><span>CYCLE WEATHER</span><b>↻</b></button>
-            <button onClick={toggleSafetyCar} className="control-button"><span>{race.safetyCar ? 'END SAFETY CAR' : 'DEPLOY SAFETY CAR'}</span><b>⚑</b></button>
-          </div>
-        </aside>
+      <section className="race-strip" aria-label="Race session">
+        <div><span>SESSION</span><strong>{race.track} GP</strong></div>
+        <div><span>LAP</span><strong>{race.lap}<small> / {race.totalLaps}</small></strong></div>
+        <div><span>POSITION</span><strong>P{race.position}</strong></div>
+        <div><span>WEATHER</span><strong>{race.weather}</strong></div>
       </section>
 
-      <footer className="radio-dock">
-        <div className="dock-label"><span className="dock-live" /> <div><strong>RADIO TRANSMIT</strong><small>{listening ? 'RECEIVING VOICE' : 'PUSH AND HOLD TO SPEAK'}</small></div></div>
-        <button
-          className={`ptt-button ${listening ? 'listening' : ''}`}
-          onPointerDown={(event) => { event.preventDefault(); startListening() }}
-          onPointerUp={stopListening}
-          onPointerLeave={stopListening}
-          onPointerCancel={stopListening}
-          disabled={!recognitionSupported || busy}
-          title={recognitionSupported ? 'Hold to speak' : 'Speech recognition is not supported in this browser'}
-        >
-          <span className="mic-symbol">●</span><strong>{listening ? 'LISTENING…' : 'HOLD TO TALK'}</strong><span className="ptt-key">PTT</span>
-        </button>
-        <div className="dock-shortcuts"><span>QUICK COMMS</span><button onClick={() => void sendMessage('Radio check')}>RADIO CHECK</button><button onClick={() => void sendMessage('Give me a race status update')}>STATUS</button><button onClick={() => void sendMessage('How are the tyres?')}>TYRES</button><button onClick={() => void sendMessage('What is the gap ahead and behind?')}>GAP</button></div>
+      <section className="radio-section">
+        <div className="section-heading">
+          <div><span className="section-index">01</span><span>TEAM RADIO</span></div>
+          <span className="channel"><i /> CHANNEL 07.4</span>
+        </div>
+
+        <div className="radio-panel">
+          <div className="radio-feed" ref={feedRef} aria-live="polite">
+            {messages.map((message, index) => (
+              <article className={`message ${message.from}`} key={message.id}>
+                <div className="message-heading">
+                  <span className="message-avatar">{message.from === 'engineer' ? 'YOU' : 'DR'}</span>
+                  <div>
+                    <strong>{message.from === 'engineer' ? 'YOU — RACE ENGINEER' : `DRIVER — P${race.position}`}</strong>
+                    <small>{message.from === 'engineer' ? 'OUTGOING RADIO' : 'INCOMING RADIO'}</small>
+                  </div>
+                  <time>{message.time}</time>
+                </div>
+                <p className="message-text">“{message.text}”</p>
+                {message.from === 'engineer' && index === 0 && <span className="delivery-note">✓ Message received by driver.</span>}
+              </article>
+            ))}
+            {busy && (
+              <div className="driver-thinking">
+                <span className="thinking-dots"><i /><i /><i /></span>
+                DRIVER RESPONDING
+              </div>
+            )}
+          </div>
+          {notice && <div className="notice-line">{notice}</div>}
+        </div>
+      </section>
+
+      <section className="situation-section">
+        <div className="section-heading">
+          <div><span className="section-index">02</span><span>NEW SITUATION</span></div>
+          <span className="muted-label">SIMULATED RACE DATA</span>
+        </div>
+        <div className="situation-grid">
+          <article className="situation-card">
+            <span className="situation-label">GAP TO P{Math.max(1, race.position - 1)}</span>
+            <strong className="gap-number">+{race.gapAhead.toFixed(1)}<small>s</small></strong>
+            <span className="situation-foot">Car ahead</span>
+          </article>
+          <article className="situation-card">
+            <span className="situation-label">TYRE CONDITION</span>
+            <strong className={`condition-value condition-${frontCondition}`}>Front: {frontCondition}</strong>
+            <span className="situation-foot">Rear: {race.rearCondition.toLowerCase()}</span>
+          </article>
+          <article className="situation-card">
+            <span className="situation-label">PIT WINDOW</span>
+            <strong className={`pit-value ${race.pitWindow === 'OPEN' ? 'is-open' : ''}`}>{pitWindow}</strong>
+            <span className="situation-foot">{race.tyreCompound} tyres · simulated</span>
+          </article>
+        </div>
+        <p className="situation-context">
+          <span className="context-dot" />
+          {race.frontCondition === 'CRITICAL'
+            ? 'Front tyre condition is critical. Consider bringing the car in.'
+            : race.frontCondition === 'DEGRADING'
+              ? 'The driver has reported front tyre sliding through Maggotts.'
+              : 'Tyre condition is stable. Keep monitoring the driver feedback.'}
+        </p>
+      </section>
+
+      <section className="decision-section">
+        <div className="section-heading">
+          <div><span className="section-index">03</span><span>YOUR NEXT RADIO CALL</span></div>
+          <span className="muted-label">CHOOSE A RESPONSE</span>
+        </div>
+        <p className="decision-prompt">The driver is reporting front tyre sliding. What do you want to do?</p>
+        <div className="option-grid">
+          {radioOptions.map((option, index) => (
+            <button className="option-card" key={option.title} onClick={() => void sendRadioCall(option.message)} disabled={busy}>
+              <span className="option-number">0{index + 1}</span>
+              <span className="option-copy"><strong>{option.title}</strong><small>{option.detail}</small></span>
+              <span className="option-arrow">↗</span>
+            </button>
+          ))}
+        </div>
+        <div className="beginner-note">
+          <span className="beginner-mark">i</span>
+          <p><strong>New to race engineering?</strong> These are suggested radio calls. Choose one to hear how your driver responds, or make up your own instruction below.</p>
+        </div>
+      </section>
+
+      <section className="transmit-section">
+        <div className="section-heading">
+          <div><span className="section-index">04</span><span>YOUR RADIO</span></div>
+          <span className="muted-label">FREEFORM COMMUNICATION</span>
+        </div>
+        <form className="radio-composer" onSubmit={(event) => { event.preventDefault(); void sendRadioCall(draft) }}>
+          <input
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            placeholder="Or write your own radio call…"
+            aria-label="Write your own radio call"
+            disabled={busy}
+          />
+          <button type="submit" className="transmit-button" disabled={!draft.trim() || busy}>TRANSMIT <span>↗</span></button>
+        </form>
+        <div className="composer-footer">
+          <span>Speak naturally. You do not need to know every F1 term.</span>
+          <button
+            className={`ptt-button ${listening ? 'listening' : ''}`}
+            onPointerDown={(event) => { event.preventDefault(); startListening() }}
+            onPointerUp={stopListening}
+            onPointerLeave={stopListening}
+            onPointerCancel={stopListening}
+            disabled={!Recognition || busy}
+            title={Recognition ? 'Hold to speak' : 'Speech recognition is not supported in this browser'}
+          >
+            <span className="mic-icon">●</span>
+            {listening ? 'LISTENING…' : 'HOLD TO SPEAK'}
+          </button>
+        </div>
+      </section>
+
+      <footer className="disclaimer">
+        <span>APEX RACE ENGINEERING</span><i /> INDEPENDENT RACE SIMULATION <i /> TELEMETRY IS ILLUSTRATIVE
       </footer>
-      <div className="disclaimer">APEX RACE ENGINEERING <span>·</span> INDEPENDENT SIMULATION <span>·</span> ALL TELEMETRY IS ILLUSTRATIVE</div>
     </main>
   )
 }
