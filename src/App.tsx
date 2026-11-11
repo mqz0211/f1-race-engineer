@@ -234,7 +234,7 @@ export default function App() {
 
         <div className="radio-panel">
           <div className="radio-feed" ref={feedRef} aria-live="polite">
-            {messages.map((message, index) => (
+            {messages.map((message) => (
               <article className={`message ${message.from}`} key={message.id}>
                 <div className="message-heading">
                   <span className="message-avatar">{message.from === 'engineer' ? 'YOU' : 'DR'}</span>
@@ -245,7 +245,7 @@ export default function App() {
                   <time>{message.time}</time>
                 </div>
                 <p className="message-text">“{message.text}”</p>
-                {message.from === 'engineer' && index === 0 && <span className="delivery-note">✓ Message received by driver.</span>}
+                {message.from === 'engineer' && <span className="delivery-note">✓ Message received by driver.</span>}
               </article>
             ))}
             {busy && (
@@ -285,9 +285,11 @@ export default function App() {
           <span className="context-dot" />
           {race.frontCondition === 'CRITICAL'
             ? 'Front tyre condition is critical. Consider bringing the car in.'
-            : race.frontCondition === 'DEGRADING'
-              ? 'The driver has reported front tyre sliding through Maggotts.'
-              : 'Tyre condition is stable. Keep monitoring the driver feedback.'}
+            : race.pitWindow === 'OPEN'
+              ? 'The pit window is open. Strategy can consider a fresh set.'
+              : race.frontCondition === 'DEGRADING'
+                ? 'The driver has reported front tyre sliding through Maggotts.'
+                : 'Fresh tyres are fitted and the condition is currently stable.'}
         </p>
       </section>
 
@@ -296,7 +298,7 @@ export default function App() {
           <div><span className="section-index">03</span><span>YOUR NEXT RADIO CALL</span></div>
           <span className="muted-label">CHOOSE A RESPONSE</span>
         </div>
-        <p className="decision-prompt">The driver is reporting front tyre sliding. What do you want to do?</p>
+        <p className="decision-prompt">{race.frontCondition === 'CRITICAL' ? 'Front tyre condition is critical. Do you want to box or manage the remaining life?' : race.pitWindow === 'OPEN' ? 'The pit window is open. Do you want to bring the car in or stay out?' : race.frontCondition === 'DEGRADING' ? 'The driver is reporting front tyre sliding. What do you want to do?' : 'Tyre condition is stable. What is your next instruction?'}</p>
         <div className="option-grid">
           {radioOptions.map((option, index) => (
             <button className="option-card" key={option.title} onClick={() => void sendRadioCall(option.message)} disabled={busy}>
