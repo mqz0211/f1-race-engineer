@@ -5,10 +5,11 @@ export type RaceState = {
   gapAhead: number
   gapBehind: number
   tyreCompound: 'SOFT' | 'MEDIUM' | 'HARD'
-  tyreWear: number
-  fuelDelta: number
-  trackTemp: number
-  airTemp: number
+  frontWear: number
+  rearWear: number
+  frontCondition: 'GOOD' | 'DEGRADING' | 'CRITICAL'
+  rearCondition: 'GOOD' | 'DEGRADING' | 'CRITICAL'
+  pitWindow: 'NOT YET' | 'OPEN'
   weather: 'DRY' | 'LIGHT RAIN' | 'WET'
   track: string
   driver: string
@@ -19,22 +20,23 @@ export type RaceState = {
 
 export type RadioMessage = {
   id: number
-  from: 'driver' | 'engineer'
+  from: 'engineer' | 'driver'
   text: string
   time: string
 }
 
 export const initialRaceState: RaceState = {
-  lap: 18,
+  lap: 12,
   totalLaps: 52,
-  position: 7,
-  gapAhead: 2.4,
-  gapBehind: 1.1,
+  position: 8,
+  gapAhead: 1.8,
+  gapBehind: 2.6,
   tyreCompound: 'MEDIUM',
-  tyreWear: 42,
-  fuelDelta: 0.8,
-  trackTemp: 34,
-  airTemp: 21,
+  frontWear: 64,
+  rearWear: 42,
+  frontCondition: 'DEGRADING',
+  rearCondition: 'GOOD',
+  pitWindow: 'NOT YET',
   weather: 'DRY',
   track: 'Silverstone',
   driver: 'CAR 07',
@@ -43,64 +45,83 @@ export const initialRaceState: RaceState = {
   pushMode: false,
 }
 
-export function advanceLap(state: RaceState): RaceState {
-  if (state.lap >= state.totalLaps) return state
+export function isInformationRequest(raw: string): boolean {
+  return /\b(what|where|when|which|how|report|tell me|status|temperature|temp|radio check|gap|information|explain)\b/i.test(raw)
+}
+
+export function advanceRaceState(raw: string, state: RaceState): RaceState {
+  const q = raw.toLowerCase()
+  const boxed = /\b(box|pit|pit stop|come in|bring it in)\b/.test(q)
+  const pushing = /\b(push|attack|close the gap|catch p\d|overtake|faster)\b/.test(q)
+  const managing = /\b(manage|look after|save|protect|take care|conserve)\b/.test(q)
+
+  if (boxed) {
+    return {
+      ...state,
+      lap: Math.min(state.totalLaps, state.lap + 1),
+      tyreCompound: 'HARD',
+      frontWear: 8,
+      rearWear: 7,
+      frontCondition: 'GOOD',
+      rearCondition: 'GOOD',
+      pitWindow: 'NOT YET',
+      pushMode: false,
+    }
+  }
+
+  const frontWear = Math.min(100, state.frontWear + (pushing ? 4 : managing ? 1 : 2))
+  const rearWear = Math.min(100, state.rearWear + (pushing ? 3 : managing ? 1 : 1.5))
   return {
     ...state,
-    lap: state.lap + 1,
-    tyreWear: Math.min(100, state.tyreWear + (state.pushMode ? 1.7 : 1.15)),
-    fuelDelta: Number((state.fuelDelta - 0.12).toFixed(1)),
-    gapAhead: Math.max(0.7, Number((state.gapAhead + (Math.random() - 0.52) * 0.22).toFixed(1))),
-    gapBehind: Math.max(0.6, Number((state.gapBehind + (Math.random() - 0.48) * 0.2).toFixed(1))),
+    lap: Math.min(state.totalLaps, state.lap + 1),
+    frontWear,
+    rearWear,
+    frontCondition: frontWear >= 82 ? 'CRITICAL' : frontWear >= 55 ? 'DEGRADING' : 'GOOD',
+    rearCondition: rearWear >= 82 ? 'CRITICAL' : rearWear >= 55 ? 'DEGRADING' : 'GOOD',
+    gapAhead: Math.max(0.7, Number((state.gapAhead + (pushing ? -0.2 : managing ? 0.05 : 0.1)).toFixed(1))),
+    gapBehind: Math.max(0.6, Number((state.gapBehind + (pushing ? 0.15 : -0.05)).toFixed(1))),
+    pitWindow: frontWear >= 76 ? 'OPEN' : state.pitWindow,
+    pushMode: pushing,
   }
 }
 
-export function generateEngineerReply(raw: string, state: RaceState): string {
+export function generateDriverReply(raw: string, state: RaceState): string {
   const q = raw.toLowerCase()
-  const tyre = `${state.tyreCompound.toLowerCase()} tyres`
+  const front = state.frontCondition.toLowerCase()
+  const compound = state.tyreCompound.toLowerCase()
 
-  if (/\b(hello|radio check|check radio|test)\b/.test(q)) {
-    return 'Loud and clear. Radio check good. We are on lap ' + state.lap + ', position P' + state.position + '.'
+  if (/\b(temperature|temp|front[- ]left|which tyre|where.*slide|more information|more info|tell me more|details)\b/.test(q)) {
+    return 'Front-left is taking the most load. The sliding starts on entry to Maggotts and carries into Becketts. Front-right is more stable, and rear traction still feels good.'
   }
-  if (/\b(status|where am i|position|race update|how are we)\b/.test(q)) {
-    return `P${state.position}, lap ${state.lap} of ${state.totalLaps}. Gap ahead ${state.gapAhead.toFixed(1)}, behind ${state.gapBehind.toFixed(1)}. Tyres are ${tyre} at ${state.tyreWear}% estimated wear. Fuel is ${state.fuelDelta >= 0 ? '+' : ''}${state.fuelDelta.toFixed(1)} laps. ${state.weather === 'DRY' ? 'Track is dry.' : state.weather + ' conditions.'}`
+  if (/\b(gap|position|status|where are we|race update)\b/.test(q)) {
+    return `We're P${state.position}, lap ${state.lap} of ${state.totalLaps. The car ahead is ${state.gapAhead.toFixed(1)} seconds up the road, and the car behind is ${state.gapBehind.toFixed(1)} back. Front tyres are ${front}; rears are ${state.rearCondition.toLowerCase()}.`
   }
-  if (/\b(tyre|tire|wear|compound|grip)\b/.test(q)) {
-    const advice = state.tyreWear > 75
-      ? 'We are approaching the end of the tyre window. Let us protect the rears and prepare the pit stop.'
-      : state.tyreWear > 55
-        ? 'Manage the rear traction on exit. We are monitoring the degradation.'
-        : 'Tyre life is in a reasonable window. Keep the entries tidy and look after the traction zones.'
-    return `${state.tyreCompound} compound, estimated wear ${state.tyreWear}%. ${advice}`
+  if (/\b(box|pit|pit stop|come in|bring it in)\b/.test(q)) {
+    return state.pitWindow === 'OPEN'
+      ? 'Copy, box this lap. I will bring it in cleanly and take the hard tyres. The fronts have had enough.'
+      : 'Copy, box this lap. I will bring it in at the end of the lap. Confirming we are going to the hard tyre?'
   }
-  if (/\b(box|pit|pit stop|come in)\b/.test(q)) {
-    if (state.safetyCar) return 'Safety Car is deployed. This is a strong window to box if the tyre life and remaining distance work for us. Confirm and we will commit.'
-    if (state.tyreWear >= 72) return 'Copy. Tyre wear is high. Box this lap for a fresh set; pit entry is clear in the simulation.'
-    return `Copy the pit request. Current wear is ${state.tyreWear}%. Our preferred call is to stay out for now and protect the current stint. I will reassess next lap.`
+  if (/\b(manage|look after|save|protect|take care|conserve)\b/.test(q)) {
+    return 'Understood. I will be kinder to the fronts, especially on turn-in through Maggotts and Becketts. I will keep the car tidy and report back if the balance gets worse.'
   }
-  if (/\b(gap|behind|ahead|leader|traffic|car in front)\b/.test(q)) {
-    return `You are P${state.position}. The car ahead is ${state.gapAhead.toFixed(1)} seconds up the road; the car behind is ${state.gapBehind.toFixed(1)} seconds back. Prioritise a clean exit through the final sector.`
+  if (/\b(push|attack|close the gap|catch p\d|overtake|faster)\b/.test(q)) {
+    return state.frontWear >= 72
+      ? 'Copy. I can push, but the front is already moving around. I will pick the moment on the Hangar Straight and avoid overworking the tyres through the fast section.'
+      : `Copy. I will push for P${state.position - 1}. Gap is coming down; I will use the straight and keep the exits clean.`
   }
-  if (/\b(weather|rain|temperature|track temp)\b/.test(q)) {
-    return `Track temperature is ${state.trackTemp} degrees, air temperature ${state.airTemp}. Conditions are ${state.weather.toLowerCase()}. We do not have rain affecting the racing line at the moment.`
+  if (/\b(hold|maintain|defend|position)\b/.test(q)) {
+    return 'Copy. I will defend P' + state.position + ' and keep the car between the lines. I will manage the front tyres while keeping an eye on the car behind.'
   }
-  if (/\b(fuel|lift|coast|energy)\b/.test(q)) {
-    const fuelMessage = state.fuelDelta >= 0
-      ? `We have ${state.fuelDelta.toFixed(1)} laps of fuel margin. No lift-and-coast required at this stage.`
-      : `We are ${Math.abs(state.fuelDelta).toFixed(1)} laps short on the current estimate. Start measured lift-and-coast at the end of the longest straights.`
-    return fuelMessage
-  }
-  if (/\b(push|pace|attack|faster|overtake)\b/.test(q)) {
-    return state.tyreWear > 68
-      ? 'You can push for one lap, but keep the rear temperatures under control. We need to avoid taking too much life out of this set.'
-      : 'Understood. Push mode for the next lap. Use the battery on the main straight and commit to the exit of the final corner.'
+  if (/\b(rain|weather|wet|track condition)\b/.test(q)) {
+    return `Track is still ${state.weather.toLowerCase()}. Grip is consistent at the moment; no rain is affecting the racing line.`
   }
   if (/\b(safety car|sc|vsc)\b/.test(q)) {
     return state.safetyCar
-      ? 'Safety Car is active. Delta is positive; keep within the required pace and maintain tyre temperature.'
-      : 'No Safety Car or Virtual Safety Car in this simulation. We are green.'
+      ? 'Copy. I am keeping to the Safety Car delta and looking after the tyre temperatures.'
+      : 'Understood. We are still green out here; no Safety Car or VSC at the moment.'
   }
-  return 'Copy. We are monitoring that. Keep the car balanced and give me the detail again if the situation changes.'
+
+  return 'Copy. Just to make sure I have understood: would you like me to manage the tyres, push for the car ahead, or box for a new set?'
 }
 
 export function makeMessage(from: RadioMessage['from'], text: string): RadioMessage {
@@ -108,6 +129,6 @@ export function makeMessage(from: RadioMessage['from'], text: string): RadioMess
     id: Date.now() + Math.floor(Math.random() * 1000),
     from,
     text,
-    time: new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+    time: new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
   }
 }
