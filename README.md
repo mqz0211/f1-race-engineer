@@ -1,18 +1,21 @@
 # Apex — F1 Race Engineer
 
-A standalone browser-based Formula 1 race engineer simulator. It is designed as a pit-wall interface rather than a racing game: you communicate with a calm, concise race engineer, monitor a simulated race, and make strategy calls.
+A standalone browser-based Formula 1 race engineer simulator. You sit on the pit wall and make the calls; the simulated driver is on track and responds over team radio.
 
-> **Simulation notice:** This project is an independent fan-made prototype. It is not affiliated with Formula 1, the FIA, any racing team, or any circuit. All telemetry and circuit graphics in the starter build are illustrative, not live or official data.
+The main experience is a radio conversation supported by a compact race situation: position, gap to the car ahead, tyre condition, and pit window. Beginners can choose suggested calls or write their own.
+
+> **Simulation notice:** This is an independent fan-made prototype. It is not affiliated with Formula 1, the FIA, any racing team, or any circuit. Race situations and telemetry are illustrative, simulated data rather than live or official data.
 
 ## Current MVP
 
-- Pit-wall dashboard with lap, position, interval, fuel, weather, and tyre information.
-- Simulated race controls: advance a lap, cycle weather, and deploy/end a Safety Car.
-- Engineer radio log with quick commands and typed driver messages.
-- Push-to-talk speech recognition when supported by the browser.
-- Spoken engineer responses using browser speech synthesis, preferring an English (United Kingdom) voice.
-- Local response engine so the prototype works without an API key.
-- Optional server endpoint integration for an LLM-powered engineer.
+- Role-reversed radio: you are the race engineer; the simulated driver replies.
+- Beginner-friendly suggested calls for tyre management, pit stops, pace, and asking for more information.
+- Freeform typed radio messages.
+- Push-to-talk speech recognition where supported by the browser.
+- Spoken driver replies using browser speech synthesis, preferring an English (United Kingdom) voice.
+- Radio transmission sound effects with an option to disable them.
+- Local scenario engine that works without an API key.
+- Race state that updates after each radio instruction.
 
 ## Run locally
 
@@ -32,58 +35,33 @@ npm run build
 npm run preview
 ```
 
-## Connecting an AI engineer
+## How the simulation works
 
-The starter includes a local response engine. To use an LLM, create a server-side endpoint and set its URL in a local `.env` file:
+The current prototype uses a local rule-based scenario engine. It recognises common race-engineering instructions and generates contextual driver radio replies. It is not connected to a hosted language model yet.
 
-```env
-VITE_ENGINEER_API_URL=https://your-server.example/api/engineer
-```
-
-The browser sends a JSON POST request:
-
-```json
-{
-  "message": "How are the tyres?",
-  "raceState": {
-    "lap": 18,
-    "totalLaps": 52,
-    "position": 7
-  }
-}
-```
-
-The endpoint should return:
-
-```json
-{ "reply": "Tyre life is in a reasonable window. Keep looking after the rear traction." }
-```
-
-The example race state above is abbreviated; the app sends the complete current state.
-
-**Security:** Do not put OpenAI, Anthropic, or other provider API keys in `VITE_*` variables or frontend code. Keep provider credentials on your server, validate incoming requests there, and return only the engineer's reply to the browser.
+A future AI driver can be added through a server-side endpoint. Keep provider credentials on the server; never expose model API keys in frontend code or `VITE_*` browser variables.
 
 ## Browser voice support
 
-Microphone recognition depends on browser support and microphone permission. The text radio remains available as a fallback. Spoken output uses installed system voices; the app requests `en-GB` and selects a British English voice when one is available.
+Microphone recognition depends on browser support and microphone permission. Typed radio remains available as a fallback. Spoken output uses installed system voices; the app requests `en-GB` and selects a British English voice when one is available.
 
 ## Project structure
 
 ```
 src/
-  lib/race-engine.ts  Simulated race state and local engineer responses
-  App.tsx             Dashboard, radio controls, and voice interface
+  lib/race-engine.ts  Simulated race state and driver response logic
+  App.tsx             Radio-first race engineer interface and voice controls
   index.css           Responsive pit-wall visual system
   main.tsx            React entry point
 ```
 
 ## Roadmap
 
-- Server-side LLM adapter with a strict race-engineer system prompt.
-- Persistent driver profile, team identity, circuit and session setup.
-- More race scenarios: qualifying, changing weather, traffic, damage, penalties, and pit windows.
+- Server-side AI driver adapter with a consistent driver personality and race memory.
+- More scenarios: traffic, damage, penalties, changing weather, Safety Cars, and pit windows.
+- More detailed strategy outcomes and race progression.
 - Better radio audio processing and configurable voice settings.
-- Unit-tested strategy model and scenario editor.
+- Unit-tested scenario and strategy model.
 
 ## Licence
 
